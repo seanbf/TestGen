@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 from scipy.interpolate import griddata, interp2d
+import os
 
 def Reference_Generation(Max_Speed, Requested_Min_Speed, Requested_Max_Speed, Requested_Speed_Step, Speed_Direction, Requested_Min_Torque, Requested_Max_Pc, Requested_Torque_Step, Torque_Direction, Max_Voltage,Requested_Voltage,f, Speed_Limit_Threshold_Type, Speed_Limit_Threshold):
     torques = []
@@ -116,13 +117,13 @@ def Profile_Generator(Requested_Profile, Max_Voltage, Requested_Voltage, Request
 
     xx, yy = np.meshgrid(Voltage_BreakPoints, Speed_BreakPoints)
 
-    if Requested_Profile == "Q1: Forward Motoring":
+    if Requested_Profile == "Forward Motoring":
         Profile_Order = ["Q1"]
-    elif Requested_Profile== "Q2: Reverse Generating":
+    elif Requested_Profile== "Reverse Generating":
         Profile_Order = ["Q2"]
-    elif Requested_Profile == "Q3: Reverse Motoring":
+    elif Requested_Profile == "Reverse Motoring":
         Profile_Order = ["Q3"]
-    elif Requested_Profile == "Q4: Forward Generating":
+    elif Requested_Profile == "Forward Generating":
         Profile_Order = ["Q4"]
     elif Requested_Profile == "Motoring":
         Profile_Order = ["Q1", "Q3"]
@@ -183,3 +184,100 @@ def Profile_Generator(Requested_Profile, Max_Voltage, Requested_Voltage, Request
         Voltage_Ref = V
     
     return Speed_Ref, Torque_Ref, Speed_Lim_Fwd, Speed_Lim_Rev, Speed_Max, Torque_Max, Voltage_Ref
+
+def Generate_Torque_Speed(Test_Name,Export_Path,Export_Name,Export_Format,Logging_Path, DCDC_Ixxat_Id, MCU_Ixxat_Id, Dyno_Ip, Dyno_Port, Dyno_Id, DCDC_V_Target, Speed_Demands,Speed_Lim_Fwd, Speed_Lim_Rev,Torque_Demands,Requested_Demanded_Period):
+    Script = []
+    DCDC_I_Lim_Pos = 400
+    DCDC_I_Lim_Neg = -400
+
+    Script.append("##### Test Setup ######")
+    Script.append("# Name: " + str(Test_Name))
+    Script.append("# Log Directory: " + str(st.session_state.Logging_Path))
+    Script.append("")
+    Script.append("##### Inverter ######")
+    Script.append("# Project: " + str(st.session_state.Requested_Project))
+    Script.append("# Sample Letter: " + str(st.session_state.Inverter_SampleLetter))
+    Script.append("# Sample Number: " + str(st.session_state.Inverter_SampleNumber))
+    Script.append("# Notes: " + str(st.session_state.Inverter_Note))
+    Script.append("")
+    Script.append("##### Motor ######")
+    Script.append("# Manufacturer: " + str(st.session_state.Motor_Manufacturer))
+    Script.append("# Sample Letter: " + str(st.session_state.Motor_SampleLetter))
+    Script.append("# Sample Number: " + str(st.session_state.Motor_SampleNumber))
+    Script.append("# Notes: " + str(st.session_state.Motor_Note))
+    Script.append("")
+    Script.append("##### Software ######")
+    Script.append("# Commit: " + str(st.session_state.Soft_Commit))
+    Script.append("# Ke: " + str(st.session_state.Soft_Ke))
+    Script.append("# Offset: " + str(st.session_state.Soft_Offset))
+    Script.append("")
+    Script.append("##### Dynamometer ######")
+    Script.append("# Location: " + str(st.session_state.Dyno_Location))
+    Script.append("# IP Address: " + str(st.session_state.Dyno_Ip))
+    Script.append("# Port: " + str(st.session_state.Dyno_Port))
+    Script.append("# ID: " + str(st.session_state.Dyno_Id))
+    Script.append("")
+    Script.append("##### CAN Hardware ######")
+    Script.append("# DCDC Ixxat ID: " + str(st.session_state.CAN_ID_DCDC))
+    Script.append("# MCU Ixxat ID: " + str(st.session_state.CAN_ID_MCU))
+    Script.append("")
+    Script.append("##### Test ######")
+    Script.append("# Test Type: " + str(st.session_state.Requested_Type))
+    Script.append("# Test Profile: " + str(st.session_state.Requested_Profile))
+    Script.append("")
+    Script.append("##### DCDC ######")
+    Script.append("# Target DC Link Voltage: " + str(st.session_state.Requested_Voltage))
+    Script.append("# DC Link Current Limit Positive: " + str(st.session_state.Requested_I_Lim_Pos))
+    Script.append("# DC Link Current Limit Negative: " + str(st.session_state.Requested_I_Lim_Neg))
+    Script.append("")
+    Script.append("##### Speed ######")
+    Script.append("# Minimum Speed abs(rpm): " + str(st.session_state.Requested_Min_Speed))
+    Script.append("# Speed Step Size abs(rpm): " + str(st.session_state.Requested_Speed_Step))
+    Script.append("# Maximum speed abs(rpm): " + str(st.session_state.Requested_Max_Speed))
+    Script.append("# Speed Limit Type: " + str(st.session_state.Requested_Speed_Limit_Type))
+    Script.append("# Value of Speed Limit: " + str(st.session_state.Requested_Speed_Limit))
+    Script.append("")
+    Script.append("##### Torque ######")
+    Script.append("# Minimum Torque abs(Nm): " + str(st.session_state.Requested_Min_Torque))
+    Script.append("# Torque Step Size (Nm): " + str(st.session_state.Requested_Torque_Step))
+    Script.append("# Maximum Torque (% of peak): " + str(st.session_state.Requested_Max_Torque))
+    Script.append("# Skip Last Torque Demand per speed point?: " + str(st.session_state.Skip_Last_Torque))
+    Script.append("")
+    Script.append("##### Time ######")
+    Script.append("# Torque Demand time (s): " + str(st.session_state.Requested_Demanded_Period))
+    Script.append("# Wait Period (s): " + str(st.session_state.Requested_Wait_Period))
+    Script.append("")
+    Script.append("#****** START OF TEST SCRIPT ******")
+
+    Script.append("Demand_Time = "+str(Requested_Demanded_Period))
+    Script.append("DCDC_I_Lim_Pos = "+str(DCDC_I_Lim_Pos))
+    Script.append("DCDC_I_Lim_Neg = "+str(DCDC_I_Lim_Neg))
+    Script.append("")
+    Script.append("DCDC.setOutputCurrentLimits(DCDC_I_Lim_Pos,DCDC_I_Lim_Neg)")
+    Script.append("DCDC.setOutputEnabled(True)")
+    Script.append("DCDC.setOutputVoltage("+str(DCDC_V_Target)+")")
+    Script.append("")
+    Script.append("print(str(Wait while DCDC raises to desired level))")
+    Script.append("time.sleep(2)")
+    Script.append("DCDC.getOutputVoltage()")
+    Script.append("")
+
+    for i in range(0, len(Speed_Demands)):
+        Script.append("MCU.setSpeedLimits("+str(min(Speed_Lim_Rev[i],0))+","+str(max(Speed_Lim_Fwd[i],0))+")")
+        Script.append("Dyno_setSpeed("+str(Speed_Demands[i])+")")
+        Script.append("MCUsetTorqueDemand("+str(Torque_Demands[i])+")")
+        Script.append("MCU.getTorque()")
+        Script.append("time.sleep(Demand_Time)")
+        i = i+1
+
+    Script.append("MCU.setTorqueDemand(0)")
+
+    File_Name = Export_Path+Export_Name+Export_Format
+    if os.path.exists(File_Name):
+        f=open(File_Name, 'w')
+        f.writelines("%s\n" % i for i in Script)
+        f.close()
+    else:
+        f=open(File_Name, 'w')
+        f.writelines("%s\n" % i for i in Script)
+        f.close()
