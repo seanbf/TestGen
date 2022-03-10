@@ -189,7 +189,7 @@ else:
                 TorqueCol_3.number_input("Step Period (s)", min_value = 0.01, max_value = 5000.0, value = 1.0, step = 0.01, key = "Requested_Torque_Down_Period")
                 TorqueCol_4.selectbox("Log", ["Disabled","Enabled"],key = "Log_Down", disabled= True)
             
-            st.checkbox("Skip last Torque demand per speed step", value=False,key = "Skip_Max_Torque")
+            st.checkbox("Skip last Torque demand per speed step", value=True,key = "Skip_Max_Torque")
 
             # Time
             st.subheader("Time")

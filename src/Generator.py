@@ -41,7 +41,9 @@ def Reference_Generation(Max_Speed, Requested_Min_Speed, Requested_Max_Speed, Re
             Current_Torque_Step = Current_Torque_Step + Requested_Torque_Up_Step*Torque_Direction
         
         if abs(Current_Torque_Step) >= abs(Requested_Max_Torque):
+
             if Skip_Max_Torque == False:
+                
                 Current_Torque_Step = Requested_Max_Torque*Torque_Direction
 
                 torques.append(Current_Torque_Step)
