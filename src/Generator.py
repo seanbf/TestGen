@@ -43,7 +43,7 @@ def Reference_Generation(Max_Speed, Requested_Min_Speed, Requested_Max_Speed, Re
         if abs(Current_Torque_Step) >= abs(Requested_Max_Torque):
 
             if Skip_Max_Torque == False:
-                
+
                 Current_Torque_Step = Requested_Max_Torque*Torque_Direction
 
                 torques.append(Current_Torque_Step)
@@ -274,26 +274,38 @@ def Generate_Torque_Speed(Test_Name,Export_Path,Export_Name,Export_Format,Loggin
     Script.append("# Wait Period (s): " + str(st.session_state.Requested_Wait_Period))
     Script.append("")
     Script.append("#****** START OF TEST SCRIPT ******")
-
-    Script.append("DCDC_I_Lim_Pos = "+str(DCDC_I_Lim_Pos))
-    Script.append("DCDC_I_Lim_Neg = "+str(DCDC_I_Lim_Neg))
+    Script.append("")
+    Script.append("Speed_Demands = " + str(Speed_Demands))
+    Script.append("")
+    Script.append("Torque_Demands = " + str(Torque_Demands))
+    Script.append("")
+    Script.append("Speed_Limits_Forward = " + str(Speed_Lim_Fwd))
+    Script.append("")
+    Script.append("Speed_Limits_Reverse = " + str(Speed_Lim_Rev))
+    Script.append("")
+    Script.append("Torque_Demand_Time = " + str(Torque_Time))
+    Script.append("")
+    Script.append("DCDC_I_Limit_Pos = "+str(DCDC_I_Lim_Pos))
+    Script.append("DCDC_I_Limit_Neg = "+str(DCDC_I_Lim_Neg))
+    Script.append("")
+    Script.append("DCDC_V_Target = " + str(DCDC_V_Target))
     Script.append("")
     Script.append("DCDC.setOutputCurrentLimits(DCDC_I_Lim_Pos,DCDC_I_Lim_Neg)")
     Script.append("DCDC.setOutputEnabled(True)")
-    Script.append("DCDC.setOutputVoltage("+str(DCDC_V_Target)+")")
+    Script.append("DCDC.setOutputVoltage(DCDC_V_Target)")
     Script.append("")
     Script.append("print(str(Wait while DCDC raises to desired level))")
     Script.append("time.sleep(2)")
     Script.append("DCDC.getOutputVoltage()")
     Script.append("")
 
-    for i in range(0, len(Speed_Demands)):
-        Script.append("MCU.setSpeedLimits("+str(min(Speed_Lim_Rev[i],0))+","+str(max(Speed_Lim_Fwd[i],0))+")")
-        Script.append("Dyno_setSpeed("+str(Speed_Demands[i])+")")
-        Script.append("MCUsetTorqueDemand("+str(Torque_Demands[i])+")")
-        Script.append("MCU.getTorque()")
-        Script.append("time.sleep("+str(Torque_Time[i])+")")
-        i = i+1
+    Script.append("for i in range(0, len(Speed_Demands)")
+    Script.append("\tMCU.setSpeedLimits(min(Speed_Limits_Forward[i],0),max(Speed_Limits_Forward_Reverse[i],0)")
+    Script.append("\tDyno_setSpeed(Speed_Demands[i])")
+    Script.append("\tMCUsetTorqueDemand(Torque_Demands[i])")
+    Script.append("\tMCU.getTorque()")
+    Script.append("\ttime.sleep(Torque_Demand_Time[i])")
+    Script.append("\ti = i+1")
 
     Script.append("MCU.setTorqueDemand(0)")
 
