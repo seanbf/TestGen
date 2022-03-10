@@ -160,7 +160,7 @@ else:
             SpeedCol_1.number_input("Minimum Speed (abs(rpm))", min_value = 0.0, max_value = float(Max_Speed), value = 500.0, step = 0.5, key = "Requested_Min_Speed")
             SpeedCol_2.number_input("Speed Step Size (abs(rpm))", min_value = 0.5, max_value = float(Max_Speed), value = 500.0, step = 0.5, key = "Requested_Speed_Step")
             SpeedCol_3.number_input("Maximum Speed (abs(rpm))", min_value = 0.5, max_value = float(Max_Speed), value = float(Max_Speed), step = 0.5, key = "Requested_Max_Speed")
-            SpeedCol_1.radio("Speed Limit Threshold",('Percentage','Offset','Value'), disabled = True, key="Requested_Speed_Limit_Type")
+            SpeedCol_1.selectbox("Speed Limit Threshold",['Percentage','Offset','Value'], disabled = True, key="Requested_Speed_Limit_Type")
 
             if st.session_state.Requested_Speed_Limit_Type == "Percentage":
                 SpeedCol_2.number_input("Percentage of Speed Target ", min_value = 0, max_value = 1000, value = 120, step = 1, key = "Requested_Speed_Limit")
@@ -168,23 +168,35 @@ else:
                 SpeedCol_2.number_input("Offset", min_value = 0.0, max_value = float(Max_Speed), value = 500.0, step = 0.01, key = "Requested_Speed_Limit")
             elif st.session_state.Requested_Speed_Limit_Type == "Value":
                 SpeedCol_2.number_input("Offset", min_value = 0.0, max_value = float(Max_Speed), value = float(Max_Speed), step = 0.01, key = "Requested_Speed_Limit")
-
+            
             # Torque
             st.subheader("Torque")
-            TorqueCol_1,TorqueCol_2,TorqueCol_3 = st.columns(3)
-            TorqueCol_1.number_input("Minimum Torque (abs(Nm))", min_value = 0.0, max_value = float(Max_Torque), value = 0.0, step = 0.5, key = "Requested_Min_Torque")
-            TorqueCol_2.number_input("Torque Step Size (abs(Nm))", min_value = 0.5, max_value = float(Max_Torque), value = 20.0, step = 0.5, key = "Requested_Torque_Step")
-            TorqueCol_3.number_input("Maximum Torque (% of Peak)", min_value = 0, max_value = 100, value = 100, step = 1, key = "Requested_Max_Torque")
-            TorqueCol_1.checkbox("Skip last Torque demand per speed step", value=False, key="Skip_Last_Torque",disabled = True)
+            TorqueCol_1a,TorqueCol_2a = st.columns(2)
+            TorqueCol_1a.number_input("Minimum Torque (abs(Nm))", min_value = 0.0, max_value = float(Max_Torque), value = 0.0, step = 0.5, key = "Requested_Min_Torque")
+            TorqueCol_2a.number_input("Maximum Torque (% of Peak)", min_value = 0, max_value = 100, value = 100, step = 1, key = "Requested_Max_Torque")
+            
+            TorqueCol_1,TorqueCol_2, TorqueCol_3, TorqueCol_4 = st.columns(4)
+
+            TorqueCol_1.selectbox("Step Up Method: ",['Ramp Up','Zero Torque'], key="Requested_Torque_Up_Method", disabled = True)
+            if st.session_state.Requested_Torque_Up_Method == "Ramp Up":
+                TorqueCol_2.number_input("Step Up Size", min_value = 0.5, max_value = float(Max_Torque), value = 20.0, step = 0.5, key = "Requested_Torque_Up_Step")
+                TorqueCol_3.number_input("Step Period (s)", min_value = 0.01, max_value = 5000.0, value = 1.0, step = 0.01, key = "Requested_Torque_Up_Period")
+                TorqueCol_4.selectbox("Log", ["Enabled","Disabled"],key = "Log_Up", disabled= True)
+
+            TorqueCol_1.selectbox("Step Down Method: ",['Ramp Down','Zero Torque'], key="Requested_Torque_Down_Method")
+            if st.session_state.Requested_Torque_Down_Method == "Ramp Down":
+                TorqueCol_2.number_input("Step Down Size", min_value = 0.01, max_value = float(Max_Torque), value = 20.0, step = 0.5, key = "Requested_Torque_Down_Step")
+                TorqueCol_3.number_input("Step Period (s)", min_value = 0.01, max_value = 5000.0, value = 1.0, step = 0.01, key = "Requested_Torque_Down_Period")
+                TorqueCol_4.selectbox("Log", ["Disabled","Enabled"],key = "Log_Down", disabled= True)
+            
+            st.checkbox("Skip last Torque demand per speed step", value=False,key = "Skip_Max_Torque")
 
             # Time
             st.subheader("Time")
-            TimeCol_1,TimeCol_2 = st.columns(2)
-            TimeCol_1.number_input("Demand Period (s)", min_value = 0.0, max_value = 5000.0, value = 1.0, step = 0.01, key = "Requested_Demanded_Period")
-            TimeCol_2.number_input("Wait Period (s)", min_value = 0.0, max_value = 5000.0, value = 1.0, step = 0.01, key = "Requested_Wait_Period")
+            st.number_input("Wait Period (s)", min_value = 0.0, max_value = 5000.0, value = 1.0, step = 0.01, key = "Requested_Wait_Period", disabled = True)
 
             # Export
-            Profile_Speeds, Profile_Torques, Speed_Lim_Fwd, Speed_Lim_Rev, Project_Speeds, Project_Torques, Profile_Voltage  = Profile_Generator(st.session_state.Requested_Profile, Max_Voltage, st.session_state.Requested_Voltage, st.session_state.Requested_Torque_Step, Max_Speed, st.session_state.Requested_Speed_Step, st.session_state.Requested_Min_Speed, st.session_state.Requested_Max_Speed, st.session_state.Requested_Min_Torque, st.session_state.Requested_Max_Torque, st.session_state.Requested_Demanded_Period, st.session_state.Requested_Wait_Period, Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, st.session_state.Requested_Speed_Limit_Type, st.session_state.Requested_Speed_Limit)
+            Profile_Speeds, Profile_Torques, Speed_Lim_Fwd, Speed_Lim_Rev, Project_Speeds, Project_Torques, Torque_Time, Profile_Voltage  = Profile_Generator(st.session_state.Requested_Profile, Max_Voltage, st.session_state.Requested_Voltage, st.session_state.Requested_Torque_Up_Step, Max_Speed, st.session_state.Requested_Speed_Step, st.session_state.Requested_Min_Speed, st.session_state.Requested_Max_Speed, st.session_state.Requested_Min_Torque, st.session_state.Requested_Max_Torque, st.session_state.Requested_Torque_Up_Period, st.session_state.Requested_Torque_Down_Period, st.session_state.Requested_Wait_Period, Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, st.session_state.Requested_Speed_Limit_Type, st.session_state.Requested_Speed_Limit, st.session_state.Skip_Max_Torque)
 
         elif st.session_state.Requested_Type == "Idq Injection":
             st.info("Under Devleopement")
@@ -200,8 +212,10 @@ else:
             Test_Name = datetime_format + st.session_state.Test_Name
 
         Internal_Name = "TestScript"
-        Internal_Format = "py"
-        Generate_Torque_Speed(Test_Name,os.getcwd(),Internal_Name,Internal_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, Profile_Voltage, Profile_Speeds,Speed_Lim_Fwd, Speed_Lim_Rev, Profile_Torques, st.session_state.Requested_Demanded_Period)
+        Internal_Format = ".py"
+
+        Generate_Torque_Speed(Test_Name,os.getcwd() + "\\",Internal_Name,Internal_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, Profile_Voltage, Profile_Speeds,Speed_Lim_Fwd, Speed_Lim_Rev, Profile_Torques, Torque_Time)
+        
         #Plot
         with st.spinner("Gererating Profile & Plots"):
             Plot_Points, Plot_Timeline  = Plot_Profile(st.session_state.Requested_Project, Profile_Torques, Profile_Speeds, Profile_Voltage, Project_Speeds, Project_Torques, Speed_Lim_Fwd, Speed_Lim_Rev)
@@ -218,7 +232,7 @@ else:
         Export_Col2.selectbox("File Format",[".py",".txt",".csv"], key = "Export_Format")
         st.warning("Under developement: (.csv)")
         if st.button("Export"):
-            Generate_Torque_Speed(Test_Name,st.session_state.Export_Path,Test_Name,st.session_state.Export_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, Profile_Voltage, Profile_Speeds,Speed_Lim_Fwd, Speed_Lim_Rev, Profile_Torques, st.session_state.Requested_Demanded_Period)
+            Generate_Torque_Speed(Test_Name,st.session_state.Export_Path,Test_Name,st.session_state.Export_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, Profile_Voltage, Profile_Speeds,Speed_Lim_Fwd, Speed_Lim_Rev, Profile_Torques, Torque_Time)
 
 
 with st.expander("Symbols", expanded = False):
@@ -314,7 +328,7 @@ if C2.button("Confirm and Start Tests"):
     st.write("Filename and/or Directory Name Saved to : " + Test_Name)
 
     if st.session_state.Target_Local == "Local":
-        Intialise_and_Run_Test_Offline(st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, Profile_Voltage, Profile_Speeds,Speed_Lim_Fwd, Speed_Lim_Rev, Profile_Torques, st.session_state.Requested_Demanded_Period)
+        Intialise_and_Run_Test_Offline(st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, Profile_Voltage, Profile_Speeds,Speed_Lim_Fwd, Speed_Lim_Rev, Profile_Torques, st.session_state.Requested_Torque_Up_Period)
     else:
         Intialise_and_Run_Test()
     

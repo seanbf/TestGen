@@ -48,7 +48,7 @@ def Intialise_and_Run_Test(Intialise_Test_Offline, Logging_Path, DCDC_Ixxat_Id, 
         finally:    
             munchInterop.terminate()
 
-def Intialise_and_Run_Test_Offline(Export_Name,Export_Format,Logging_Path, DCDC_Ixxat_Id, MCU_Ixxat_Id, Dyno_Ip, Dyno_Port, Dyno_Id, DCDC_V_Target, Speed_Demands,Speed_Lim_Fwd, Speed_Lim_Rev,Torque_Demands,Requested_Demanded_Period):
+def Intialise_and_Run_Test_Offline(Export_Name,Export_Format,Logging_Path, DCDC_Ixxat_Id, MCU_Ixxat_Id, Dyno_Ip, Dyno_Port, Dyno_Id, DCDC_V_Target, Speed_Demands,Speed_Lim_Fwd, Speed_Lim_Rev,Torque_Demands,Requested_Torque_Up_Period):
     st.info("Intialise_and_Run_Test_Offline()")
     st.write(Logging_Path)
 
@@ -62,5 +62,5 @@ def Intialise_and_Run_Test_Offline(Export_Name,Export_Format,Logging_Path, DCDC_
     DCDC_I_Lim_Neg = -400
 
     # temp
-    Generate_Torque_Speed_Script(Export_Name,Export_Format,DCDC_I_Lim_Pos, DCDC_I_Lim_Neg, DCDC_V_Target,Speed_Demands,Speed_Lim_Fwd, Speed_Lim_Rev, Torque_Demands, Requested_Demanded_Period)
+    Generate_Torque_Speed_Script(Export_Name,Export_Format,DCDC_I_Lim_Pos, DCDC_I_Lim_Neg, DCDC_V_Target,Speed_Demands,Speed_Lim_Fwd, Speed_Lim_Rev, Torque_Demands, Requested_Torque_Up_Period)
     st.success("Check Console; Test Finished")
