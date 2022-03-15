@@ -4,240 +4,395 @@ import streamlit as st
 from scipy.interpolate import griddata, interp2d
 import os
 
-def Reference_Generation(Max_Speed, Requested_Min_Speed, Requested_Max_Speed, Requested_Speed_Step, Speed_Direction, Requested_Min_Torque, Requested_Max_Pc, Requested_Torque_Up_Step, Requested_Torque_Up_Period,Requested_Torque_Down_Period, Torque_Direction, Max_Voltage,Requested_Voltage,f, Speed_Limit_Threshold_Type, Speed_Limit_Threshold, Skip_Max_Torque):
-    torques = []
-    speeds = []
-    speed_limit_fwd = []
-    speed_limit_rev = []
-    time_torque = []
+def genRef(torqueDir, torqueMaxPc, torqueMinVal, torqueStepUp, torqueStepDown, torqueDemandPeriodUp, torqueDemandPeriodDown, torqueSkipLast, speedDir, speedMaxTable, speedMaxReq, speedMin, speedStepUp, speedStepDown, speedLimMethod, speedLimThreshold, voltageRef, f):
+    torqueDemand = []
+    torqueDemandPeriod = []
+    speedDemand = []
+    speedLimFwd = []
+    speedLimRev = []
+    
+    # Torque 
+    torqueMax = torqueMaxPc * torqueDir
+    torqueMin = torqueMinVal * torqueDir
+    torqueStepUp = torqueStepUp * torqueDir
+    torqueStepDown = torqueStepDown * torqueDir
 
-    Voltage = min(abs(Max_Voltage),abs(Requested_Voltage))
+    # Speed
+    speedLimFwdThreshold = speedLimThreshold
+    speedLimRevThreshold = speedLimThreshold
 
-    Current_Speed_Step = Requested_Min_Speed*Speed_Direction
+    speedStepCurrent = speedMin * speedDir
 
-    if Speed_Limit_Threshold_Type == "Percentage":
+    if speedLimMethod == "Percentage":
+        speedLimFwdCurrent = max(speedStepCurrent*speedLimFwdThreshold, 0) 
+        speedLimRevCurrent = min(speedStepCurrent*speedLimRevThreshold, 0)
 
-        Current_Speed_Limit_Fwd = max(Current_Speed_Step*Speed_Limit_Threshold,0)
-        Current_Speed_Limit_Rev = min(Current_Speed_Step*Speed_Limit_Threshold,0)
+    speedMax = min(abs(speedMaxTable),abs(speedMaxReq)) * speedDir
+    
+    # Start of Loop
+    while abs(speedStepCurrent) <= abs(speedMax):
         
-    while abs(Current_Speed_Step) <= min(abs(Max_Speed),abs(Requested_Max_Speed)):
+        # Get Torque Max value after percentage gain applied
+        torqueMaxAvail = f(voltageRef, speedStepCurrent)
+        torqueMaxAvail = torqueMaxAvail[0] * torqueMax
         
-        Current_Torque_Step = Requested_Min_Torque*Torque_Direction
-
-        Max_Torque_Available = f(Voltage, Current_Speed_Step)
-        Requested_Max_Torque = Max_Torque_Available[0] * Requested_Max_Pc
+        # Every speed step, start torque from minimum torque step
+        torqueStepCurrent = torqueMin
         
-        while abs(Current_Torque_Step) < abs(Requested_Max_Torque):
+        if torqueDir > 0:
+        # Start torque increment
+            while torqueStepCurrent < torqueMaxAvail:
+                
+                # Store current values
+                torqueDemand.append(torqueStepCurrent)
+                torqueDemandPeriod.append(torqueDemandPeriodUp)
+                speedDemand.append(speedStepCurrent)
+                speedLimFwd.append(speedLimFwdCurrent)
+                speedLimRev.append(speedLimRevCurrent)
 
-            torques.append(Current_Torque_Step)
-            speeds.append(Current_Speed_Step)
-            speed_limit_fwd.append(Current_Speed_Limit_Fwd)
-            speed_limit_rev.append(Current_Speed_Limit_Rev)
-            if Current_Torque_Step >= 0:
-                time_torque.append(Requested_Torque_Up_Period)
+                # Step torque up using requested torque step
+                torquePrevStep = torqueStepCurrent
+                torqueStepCurrent = torqueStepCurrent + torqueStepUp
+
+            if (torqueStepCurrent >= torqueMaxAvail) and (torqueSkipLast == False):
+
+                torqueStepCurrent = torqueMaxAvail
+
+                # Store current values
+                torqueDemand.append(torqueStepCurrent)
+                torqueDemandPeriod.append(torqueDemandPeriodUp)
+                speedDemand.append(speedStepCurrent)
+                speedLimFwd.append(speedLimFwdCurrent)
+                speedLimRev.append(speedLimRevCurrent)
+
+                while torqueStepCurrent > torqueMin:
+
+                    torqueStepCurrent = torqueStepCurrent - torqueStepDown
+
+                    if torqueStepCurrent <= torqueMin:
+
+                        torqueStepCurrent = 0
+
+                        # Store current values
+                        torqueDemand.append(torqueStepCurrent)
+                        torqueDemandPeriod.append(torqueDemandPeriodUp)
+                        speedDemand.append(speedStepCurrent)
+                        speedLimFwd.append(speedLimFwdCurrent)
+                        speedLimRev.append(speedLimRevCurrent)
+
+                    # Store current values
+                    torqueDemand.append(torqueStepCurrent)
+                    torqueDemandPeriod.append(torqueDemandPeriodUp)
+                    speedDemand.append(speedStepCurrent)
+                    speedLimFwd.append(speedLimFwdCurrent)
+                    speedLimRev.append(speedLimRevCurrent)
+
             else:
-                time_torque.append(Requested_Torque_Down_Period)
+                torqueStepCurrent = torquePrevStep
 
-            Current_Torque_Step = Current_Torque_Step + Requested_Torque_Up_Step*Torque_Direction
+                while torqueStepCurrent > torqueMin:
+
+                    torqueStepCurrent = torqueStepCurrent - torqueStepDown
+
+                    if torqueStepCurrent <= torqueMin:
+
+                        torqueStepCurrent = 0
+
+                        # Store current values
+                        torqueDemand.append(torqueStepCurrent)
+                        torqueDemandPeriod.append(torqueDemandPeriodUp)
+                        speedDemand.append(speedStepCurrent)
+                        speedLimFwd.append(speedLimFwdCurrent)
+                        speedLimRev.append(speedLimRevCurrent)
+
+                    # Store current values
+                    torqueDemand.append(torqueStepCurrent)
+                    torqueDemandPeriod.append(torqueDemandPeriodUp)
+                    speedDemand.append(speedStepCurrent)
+                    speedLimFwd.append(speedLimFwdCurrent)
+                    speedLimRev.append(speedLimRevCurrent)
+
+                if torqueStepCurrent <= torqueMin:
+
+                    torqueStepCurrent = 0
+
+                    # Store current values
+                    torqueDemand.append(torqueStepCurrent)
+                    torqueDemandPeriod.append(torqueDemandPeriodUp)
+                    speedDemand.append(speedStepCurrent)
+                    speedLimFwd.append(speedLimFwdCurrent)
+                    speedLimRev.append(speedLimRevCurrent)
         
-        if abs(Current_Torque_Step) >= abs(Requested_Max_Torque):
-
-            if Skip_Max_Torque == False:
-
-                Current_Torque_Step = Requested_Max_Torque*Torque_Direction
-
-                torques.append(Current_Torque_Step)
-                speeds.append(Current_Speed_Step)
-                speed_limit_fwd.append(Current_Speed_Limit_Fwd)
-                speed_limit_rev.append(Current_Speed_Limit_Rev)
-                if Current_Torque_Step >= 0:
-                    time_torque.append(Requested_Torque_Up_Period)
-                else:
-                    time_torque.append(Requested_Torque_Down_Period)
-            
-        Current_Speed_Step = Current_Speed_Step + Requested_Speed_Step*Speed_Direction
-
-        if Speed_Limit_Threshold_Type == "Percentage":
-
-            Current_Speed_Limit_Fwd = max(Current_Speed_Step*Speed_Limit_Threshold,0)
-            Current_Speed_Limit_Rev = min(Current_Speed_Step*Speed_Limit_Threshold,0)
-
-    if abs(Current_Speed_Step) == min(abs(Max_Speed),abs(Requested_Max_Speed)):
-
-        Max_Torque_Available = f(Requested_Voltage, Current_Speed_Step)
-        Requested_Max_Torque = Max_Torque_Available[0] * Requested_Max_Pc
-
-        Current_Speed_Step = Requested_Max_Speed*Speed_Direction
+        if torqueDir < 0:
         
-        if Speed_Limit_Threshold_Type == "Percentage":
-            Current_Speed_Limit_Fwd = max(Current_Speed_Step*Speed_Limit_Threshold,0)
-            Current_Speed_Limit_Rev = min(Current_Speed_Step*Speed_Limit_Threshold,0)
+        # Start torque increment
             
-        torques.append(Current_Torque_Step)
-        speeds.append(Current_Speed_Step)
-        speed_limit_fwd.append(Current_Speed_Limit_Fwd)
-        speed_limit_rev.append(Current_Speed_Limit_Rev)
-        if Current_Torque_Step >= 0:
-            time_torque.append(Requested_Torque_Up_Period)
+            while torqueStepCurrent > torqueMaxAvail:
+                # Store current values
+                torqueDemand.append(torqueStepCurrent)
+                torqueDemandPeriod.append(torqueDemandPeriodUp)
+                speedDemand.append(speedStepCurrent)
+                speedLimFwd.append(speedLimFwdCurrent)
+                speedLimRev.append(speedLimRevCurrent)
+
+                # Step torque up using requested torque step
+                torquePrevStep = torqueStepCurrent
+                torqueStepCurrent = torqueStepCurrent + torqueStepUp
+
+            if (torqueStepCurrent <= torqueMaxAvail) and (torqueSkipLast == False):
+                
+                torqueStepCurrent = torqueMaxAvail
+                
+                # Store current values
+                torqueDemand.append(torqueStepCurrent)
+                torqueDemandPeriod.append(torqueDemandPeriodUp)
+                speedDemand.append(speedStepCurrent)
+                speedLimFwd.append(speedLimFwdCurrent)
+                speedLimRev.append(speedLimRevCurrent)
+                
+                while torqueStepCurrent < torqueMin:
+
+                    torqueStepCurrent = torqueStepCurrent - torqueStepDown
+
+                    if torqueStepCurrent >= torqueMin:
+
+                        torqueStepCurrent = 0
+
+                        # Store current values
+                        torqueDemand.append(torqueStepCurrent)
+                        torqueDemandPeriod.append(torqueDemandPeriodUp)
+                        speedDemand.append(speedStepCurrent)
+                        speedLimFwd.append(speedLimFwdCurrent)
+                        speedLimRev.append(speedLimRevCurrent)
+
+                    # Store current values
+                    torqueDemand.append(torqueStepCurrent)
+                    torqueDemandPeriod.append(torqueDemandPeriodUp)
+                    speedDemand.append(speedStepCurrent)
+                    speedLimFwd.append(speedLimFwdCurrent)
+                    speedLimRev.append(speedLimRevCurrent)
+                
+            else:
+                
+                torqueStepCurrent = torquePrevStep
+
+                while torqueStepCurrent < torqueMin:
+
+                    torqueStepCurrent = torqueStepCurrent - torqueStepDown
+
+                    if torqueStepCurrent >= torqueMin:
+
+                        torqueStepCurrent = 0
+
+                        # Store current values
+                        torqueDemand.append(torqueStepCurrent)
+                        torqueDemandPeriod.append(torqueDemandPeriodUp)
+                        speedDemand.append(speedStepCurrent)
+                        speedLimFwd.append(speedLimFwdCurrent)
+                        speedLimRev.append(speedLimRevCurrent)
+
+                    # Store current values
+                    torqueDemand.append(torqueStepCurrent)
+                    torqueDemandPeriod.append(torqueDemandPeriodUp)
+                    speedDemand.append(speedStepCurrent)
+                    speedLimFwd.append(speedLimFwdCurrent)
+                    speedLimRev.append(speedLimRevCurrent)
+        
+        speedStepCurrent = speedStepCurrent + speedStepUp * speedDir
+        
+        
+        if speedLimMethod == "Percentage":
+            speedLimFwdCurrent = max(speedStepCurrent*speedLimFwdThreshold, 0) 
+            speedLimRevCurrent = min(speedStepCurrent*speedLimRevThreshold, 0)
+
+    ref = pd.DataFrame(data = {"torqueDemand":torqueDemand,"torqueDemandPeriod":torqueDemandPeriod,"speedDemand":speedDemand,"speedLimFwd":speedLimFwd,"speedLimRev":speedLimFwd})
+
+    return ref
+
+def genEnv(torqueDir, torquePeak, speedDir, speedBreakpoints, voltageRef, f):
+
+    torqueEnv = []
+    speedEnv = []
+    i = 0
+
+    #torqueMax = torquePeak * torqueDir
+    speedMax = max(speedBreakpoints) * speedDir
+    envSpeed = np.linspace ( 0, max(speedBreakpoints) * speedDir, 50 )
+    
+    speedEnv.append(0) 
+    torqueEnv.append(0)
+    
+    speedStepCurrent = 0
+    torqueMaxAvail = 0
+
+    for speeds in  envSpeed:
+
+        torqueMaxAvailable = f(voltageRef, speeds)
+        torqueMaxAvail = torqueMaxAvailable[0]
+
+        torqueEnv.append(torqueMaxAvail*torqueDir)
+        speedEnv.append(speeds)
+
+    speedEnv.append(speedMax) 
+    torqueEnv.append(0)
+
+
+    speedEnv.append(0) 
+    torqueEnv.append(0)
+
+    env = pd.DataFrame(data = {"torqueEnv":torqueEnv,"speedEnv":speedEnv})    
+
+    return env
+
+def genProfile(profile, torquePeak, torqueMaxPcIn, torqueMinVal, torqueStepUp, torqueStepDown, torqueDemandPeriodUp, torqueDemandPeriodDown, torqueSkipLast, speedMaxTable, speedMaxReq, speedMin, speedStepUp, speedStepDown, speedLimMethod, speedLimThresholdIn, speedBreakpoints, voltageBreakpoints, voltageRef):
+
+    torqueMaxPc = torqueMaxPcIn / 100
+    speedLimThreshold = speedLimThresholdIn / 100
+
+    InitCount = 0
+
+    refInit = pd.DataFrame(data = {"torqueDemand":[],"torqueDemandPeriod":[],"speedDemand":[],"speedLimFwd":[],"speedLimRev":[]})
+    
+    xx, yy = np.meshgrid(voltageBreakpoints, speedBreakpoints)
+
+    if profile          == "Forward Motoring":
+        profileOrder    = ["Q1"]
+
+    elif profile        == "Reverse Generating":
+        profileOrder    = ["Q2"]
+
+    elif profile        == "Reverse Motoring":
+        profileOrder    = ["Q3"]
+
+    elif profile        == "Forward Generating":
+        profileOrder    = ["Q4"]
+
+    elif profile        == "Motoring":
+        profileOrder    = ["Q1", "Q3"]
+
+    elif profile        == "Generating":
+        profileOrder    = ["Q2", "Q4"]
+
+    elif profile        == "Forward":
+        profileOrder    = ["Q1", "Q4"]
+
+    elif profile        == "Reverse":
+        profileOrder    = ["Q2", "Q3"]
+
+    elif profile        == "All":
+        profileOrder    = ["Q1", "Q2", "Q3","Q4"]
+
+    for quadrant in profileOrder:
+
+        if quadrant == "Q1":
+            
+            speedDir    = 1
+            torqueDir   = 1
+            f           = interp2d(xx, yy*speedDir, torquePeak, kind='linear', copy=True, bounds_error=False, fill_value=None)
+            ref         = genRef(torqueDir, torqueMaxPc, torqueMinVal, torqueStepUp, torqueStepDown, torqueDemandPeriodUp, torqueDemandPeriodDown, torqueSkipLast, speedDir, speedMaxTable, speedMaxReq, speedMin, speedStepUp, speedStepDown, speedLimMethod, speedLimThreshold, voltageRef, f)
+
+        elif quadrant == "Q2": 
+            speedDir    = -1
+            torqueDir   = 1
+            f           = interp2d(xx, yy*speedDir, torquePeak, kind='linear', copy=True, bounds_error=False, fill_value=None)
+            ref         = genRef(torqueDir, torqueMaxPc, torqueMinVal, torqueStepUp, torqueStepDown, torqueDemandPeriodUp, torqueDemandPeriodDown, torqueSkipLast, speedDir, speedMaxTable, speedMaxReq, speedMin, speedStepUp, speedStepDown, speedLimMethod, speedLimThreshold, voltageRef, f)
+
+        elif quadrant == "Q3":
+            speedDir    = -1
+            torqueDir   = -1
+            f           = interp2d(xx, yy*speedDir, torquePeak, kind='linear', copy=True, bounds_error=False, fill_value=None)
+            ref         = genRef(torqueDir, torqueMaxPc, torqueMinVal, torqueStepUp, torqueStepDown, torqueDemandPeriodUp, torqueDemandPeriodDown, torqueSkipLast, speedDir, speedMaxTable, speedMaxReq, speedMin, speedStepUp, speedStepDown, speedLimMethod, speedLimThreshold, voltageRef, f)
+
+        elif quadrant == "Q4":
+            speedDir    = 1
+            torqueDir   = -1
+            f           = interp2d(xx, yy*speedDir, torquePeak, kind='linear', copy=True, bounds_error=False, fill_value=None)
+            ref         = genRef(torqueDir, torqueMaxPc, torqueMinVal, torqueStepUp, torqueStepDown, torqueDemandPeriodUp, torqueDemandPeriodDown, torqueSkipLast, speedDir, speedMaxTable, speedMaxReq, speedMin, speedStepUp, speedStepDown, speedLimMethod, speedLimThreshold, voltageRef, f)
+
+        if InitCount    == 0:
+
+            ref_out     = pd.concat([refInit,ref], ignore_index =True)
+            InitCount   = 1
+
         else:
-            time_torque.append(Requested_Torque_Down_Period)
 
-    speeds.append(0) 
-    torques.append(0)
-    speed_limit_fwd.append(0)
-    speed_limit_rev.append(0)
-    time_torque.append(0)
+            ref_out     = pd.concat([ref_out, ref], ignore_index =True)
 
-    return speeds, torques, speed_limit_fwd, speed_limit_rev, time_torque, Voltage  
+    return ref_out
 
-def Determine_Max_Available(Max_Speed, Requested_Speed_Step, Speed_Direction, Torque_Direction, Max_Voltage,Requested_Voltage,f):
-    torques = []
-    speeds = []
-    Voltage = min(abs(Max_Voltage),abs(Requested_Voltage))
-
-    Current_Speed_Step = 0
-    speeds.append(Current_Speed_Step) 
-    torques.append(0)
-
-    while abs(Current_Speed_Step) <= abs(Max_Speed):
-
-        Max_Torque_Available = f(Voltage, Current_Speed_Step)
-        Max_Torque_Available = Max_Torque_Available[0]*Torque_Direction
-
-        torques.append(Max_Torque_Available)
-        speeds.append(Current_Speed_Step)
-
-        Current_Speed_Step = Current_Speed_Step + Requested_Speed_Step*Speed_Direction
-
-    if abs(Current_Speed_Step) == abs(Max_Speed):
-
-        Max_Torque_Available = f(Voltage, Current_Speed_Step)
-        Max_Torque_Available = Max_Torque_Available[0]*Torque_Direction
-
-        Current_Speed_Step = Max_Speed*Speed_Direction
-        
-        torques.append(Max_Torque_Available)
-        speeds.append(Current_Speed_Step)
+def genEnvolope(torquePeak, speedBreakpoints, voltageBreakpoints, voltageRef):
     
-    speeds.append(Max_Speed*Speed_Direction) 
-    torques.append(0)
+    InitCount = 0
+    envInit = pd.DataFrame(data = {"torqueEnv":[],"speedEnv":[]})
+    
+    xx, yy = np.meshgrid(voltageBreakpoints, speedBreakpoints)
 
-    speeds.append(0) 
-    torques.append(0)
+    profileOrder    = ["Q1", "Q2", "Q3","Q4"]
 
-    return speeds, torques, Voltage
+    for quadrant in profileOrder:
 
-def Profile_Generator(Requested_Profile, Max_Voltage, Requested_Voltage, Requested_Torque_Up_Step, Max_Speed, Requested_Speed_Step, Requested_Min_Speed, Requested_Max_Speed, Requested_Min_Torque, Requested_Max_Torque,  Requested_Torque_Up_Period,Requested_Torque_Down_Period,Requested_Wait_Period, Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, Speed_Limit_Threshold_Type, Speed_Limit_Threshold, Skip_Max_Torque):
-    Speed_Ref = []
-    Speed_Lim_Fwd = []
-    Speed_Lim_Rev = []
-    Speed_Max = []
-    Torque_Ref = []
-    Torque_Max = []
-    Torque_Period = []
-    Requested_Max_Torque = Requested_Max_Torque / 100
-    Speed_Limit_Threshold = Speed_Limit_Threshold / 100
-
-    xx, yy = np.meshgrid(Voltage_BreakPoints, Speed_BreakPoints)
-
-    if Requested_Profile == "Forward Motoring":
-        Profile_Order = ["Q1"]
-    elif Requested_Profile== "Reverse Generating":
-        Profile_Order = ["Q2"]
-    elif Requested_Profile == "Reverse Motoring":
-        Profile_Order = ["Q3"]
-    elif Requested_Profile == "Forward Generating":
-        Profile_Order = ["Q4"]
-    elif Requested_Profile == "Motoring":
-        Profile_Order = ["Q1", "Q3"]
-    elif Requested_Profile == "Generating":
-        Profile_Order = ["Q2", "Q4"]
-    elif Requested_Profile == "Forward":
-        Profile_Order = ["Q1", "Q4"]
-    elif Requested_Profile == "Reverse":
-        Profile_Order = ["Q2", "Q3"]
-    elif Requested_Profile == "All":
-        Profile_Order = ["Q1", "Q2", "Q3","Q4"]
-
-    for Quadrant in Profile_Order:
-
-        if Quadrant == "Q1":
+        if quadrant == "Q1":
             
-            Speed_Direction = 1
-            Torque_Direction = 1
-            f = interp2d(xx, yy*Speed_Direction, Peak_Torque, kind='linear', copy=True, bounds_error=False, fill_value=None)
-            S, T, S_Lim_Fwd, S_Lim_Rev, Time_Torque, V = Reference_Generation(Max_Speed,Requested_Min_Speed, Requested_Max_Speed, Requested_Speed_Step,Speed_Direction,Requested_Min_Torque,Requested_Max_Torque,Requested_Torque_Up_Step, Requested_Torque_Up_Period,Requested_Torque_Down_Period, Torque_Direction,Max_Voltage,Requested_Voltage,f, Speed_Limit_Threshold_Type, Speed_Limit_Threshold,Skip_Max_Torque)
-            S_Max, T_Max, V_Max = Determine_Max_Available(Max_Speed, Requested_Speed_Step,Speed_Direction,Torque_Direction,Max_Voltage,Requested_Voltage,f)
+            speedDir    = 1
+            torqueDir   = 1
+            f           = interp2d(xx, yy*speedDir, torquePeak, kind='linear', copy=True, bounds_error=False, fill_value=None)
+            env         = genEnv(torqueDir, torquePeak, speedDir, speedBreakpoints, voltageRef, f)
+            
+        elif quadrant == "Q2": 
+            speedDir    = -1
+            torqueDir   = 1
+            f           = interp2d(xx, yy*speedDir, torquePeak, kind='linear', copy=True, bounds_error=False, fill_value=None)
+            env         = genEnv(torqueDir, torquePeak, speedDir, speedBreakpoints, voltageRef, f)
 
-        elif Quadrant == "Q2": 
-            Speed_Direction = -1
-            Torque_Direction = 1
-            f = interp2d(xx, yy*Speed_Direction, Peak_Torque, kind='linear', copy=True, bounds_error=False, fill_value=None)
-            S, T, S_Lim_Fwd, S_Lim_Rev, Time_Torque, V  = Reference_Generation(Max_Speed,Requested_Min_Speed, Requested_Max_Speed, Requested_Speed_Step,Speed_Direction,Requested_Min_Torque,Requested_Max_Torque,Requested_Torque_Up_Step, Requested_Torque_Up_Period,Requested_Torque_Down_Period,Torque_Direction,Max_Voltage,Requested_Voltage,f, Speed_Limit_Threshold_Type, Speed_Limit_Threshold,Skip_Max_Torque)      
-            S_Max, T_Max, V_Max = Determine_Max_Available(Max_Speed, Requested_Speed_Step,Speed_Direction,Torque_Direction,Max_Voltage,Requested_Voltage,f)
+        elif quadrant == "Q3":
+            speedDir    = -1
+            torqueDir   = -1
+            f           = interp2d(xx, yy*speedDir, torquePeak, kind='linear', copy=True, bounds_error=False, fill_value=None)
+            env         = genEnv(torqueDir, torquePeak, speedDir, speedBreakpoints, voltageRef, f)
 
-        elif Quadrant == "Q3":
-            Speed_Direction = -1
-            Torque_Direction = -1
-            f = interp2d(xx, yy*Speed_Direction, Peak_Torque, kind='linear', copy=True, bounds_error=False, fill_value=None)
-            S, T, S_Lim_Fwd, S_Lim_Rev, Time_Torque, V  = Reference_Generation(Max_Speed,Requested_Min_Speed, Requested_Max_Speed, Requested_Speed_Step,Speed_Direction,Requested_Min_Torque,Requested_Max_Torque,Requested_Torque_Up_Step, Requested_Torque_Up_Period,Requested_Torque_Down_Period,Torque_Direction,Max_Voltage,Requested_Voltage,f, Speed_Limit_Threshold_Type, Speed_Limit_Threshold,Skip_Max_Torque)
-            S_Max, T_Max, V_Max = Determine_Max_Available(Max_Speed, Requested_Speed_Step,Speed_Direction,Torque_Direction,Max_Voltage,Requested_Voltage,f)
+        elif quadrant == "Q4":
+            speedDir    = 1
+            torqueDir   = -1
+            f           = interp2d(xx, yy*speedDir, torquePeak, kind='linear', copy=True, bounds_error=False, fill_value=None)
+            env         = genEnv(torqueDir, torquePeak, speedDir, speedBreakpoints, voltageRef, f)
 
-        elif Quadrant == "Q4":
-            Speed_Direction = 1
-            Torque_Direction = -1
-            f = interp2d(xx, yy*Speed_Direction, Peak_Torque, kind='linear', copy=True, bounds_error=False, fill_value=None)
-            S, T, S_Lim_Fwd, S_Lim_Rev, Time_Torque, V  = Reference_Generation(Max_Speed, Requested_Min_Speed, Requested_Max_Speed, Requested_Speed_Step, Speed_Direction, Requested_Min_Torque, Requested_Max_Torque, Requested_Torque_Up_Step, Requested_Torque_Up_Period,Requested_Torque_Down_Period, Torque_Direction,Max_Voltage,Requested_Voltage,f, Speed_Limit_Threshold_Type, Speed_Limit_Threshold,Skip_Max_Torque)
-            S_Max, T_Max, V_Max = Determine_Max_Available(Max_Speed, Requested_Speed_Step,Speed_Direction,Torque_Direction,Max_Voltage,Requested_Voltage,f)
+        if InitCount    == 0:
 
-        for speed in S:
-            Speed_Ref.append(speed)
-        for speed in S_Lim_Fwd:
-            Speed_Lim_Fwd.append(speed)
-        for speed in S_Lim_Rev:
-            Speed_Lim_Rev.append(speed)
-        for speed in S_Max:
-            Speed_Max.append(speed)
+            env_out     = pd.concat([envInit, env] , ignore_index = True)
+            InitCount   = 1
 
-        for torque in T:
-            Torque_Ref.append(torque)
-        for torque in T_Max:
-            Torque_Max.append(torque)
+        else:
+            env_out     = pd.concat([env_out, env], ignore_index =True)
 
-        for time in Time_Torque:
-            Torque_Period.append(time)
+    return env_out
 
-        Voltage_Ref = V
-    
-    return Speed_Ref, Torque_Ref, Speed_Lim_Fwd, Speed_Lim_Rev, Speed_Max, Torque_Max, Torque_Period, Voltage_Ref
-
-def Generate_Torque_Speed(Test_Name,Export_Path,Export_Name,Export_Format,Logging_Path, DCDC_Ixxat_Id, MCU_Ixxat_Id, Dyno_Ip, Dyno_Port, Dyno_Id, DCDC_V_Target, Speed_Demands,Speed_Lim_Fwd, Speed_Lim_Rev,Torque_Demands,Torque_Time):
+def genTorqueSpeed(Test_Name,Export_Path,Export_Name,Export_Format,Logging_Path, DCDC_Ixxat_Id, MCU_Ixxat_Id, Dyno_Ip, Dyno_Port, Dyno_Id, DCDC_V_Target, Speed_Demands,Speed_Lim_Fwd, Speed_Lim_Rev,Torque_Demands,Torque_Time):
     Script = []
     DCDC_I_Lim_Pos = 400
     DCDC_I_Lim_Neg = -400
 
-    Script.append("##### Test Setup ######")
+    Script.append("###### Test Setup ######")
     Script.append("# Name: " + str(Test_Name))
     Script.append("# Log Directory: " + str(st.session_state.Logging_Path))
     Script.append("")
-    Script.append("##### Inverter ######")
+    Script.append("###### Inverter ######")
     Script.append("# Project: " + str(st.session_state.Requested_Project))
     Script.append("# Sample Letter: " + str(st.session_state.Inverter_SampleLetter))
     Script.append("# Sample Number: " + str(st.session_state.Inverter_SampleNumber))
     Script.append("# Notes: " + str(st.session_state.Inverter_Note))
     Script.append("")
-    Script.append("##### Motor ######")
+    Script.append("###### Motor ######")
     Script.append("# Manufacturer: " + str(st.session_state.Motor_Manufacturer))
     Script.append("# Sample Letter: " + str(st.session_state.Motor_SampleLetter))
     Script.append("# Sample Number: " + str(st.session_state.Motor_SampleNumber))
     Script.append("# Notes: " + str(st.session_state.Motor_Note))
     Script.append("")
-    Script.append("##### Software ######")
+    Script.append("###### Software ######")
     Script.append("# Commit: " + str(st.session_state.Soft_Commit))
     Script.append("# Ke: " + str(st.session_state.Soft_Ke))
     Script.append("# Offset: " + str(st.session_state.Soft_Offset))
     Script.append("")
-    Script.append("##### Dynamometer ######")
+    Script.append("###### Dynamometer ######")
     Script.append("# Location: " + str(st.session_state.Dyno_Location))
     Script.append("# IP Address: " + str(st.session_state.Dyno_Ip))
     Script.append("# Port: " + str(st.session_state.Dyno_Port))
@@ -251,12 +406,12 @@ def Generate_Torque_Speed(Test_Name,Export_Path,Export_Name,Export_Format,Loggin
     Script.append("# Test Type: " + str(st.session_state.Requested_Type))
     Script.append("# Test Profile: " + str(st.session_state.Requested_Profile))
     Script.append("")
-    Script.append("##### DCDC ######")
+    Script.append("###### DCDC ######")
     Script.append("# Target DC Link Voltage: " + str(st.session_state.Requested_Voltage))
     Script.append("# DC Link Current Limit Positive: " + str(st.session_state.Requested_I_Lim_Pos))
     Script.append("# DC Link Current Limit Negative: " + str(st.session_state.Requested_I_Lim_Neg))
     Script.append("")
-    Script.append("##### Speed ######")
+    Script.append("###### Speed ######")
     Script.append("# Minimum Speed abs(rpm): " + str(st.session_state.Requested_Min_Speed))
     Script.append("# Speed Step Size abs(rpm): " + str(st.session_state.Requested_Speed_Step))
     Script.append("# Maximum speed abs(rpm): " + str(st.session_state.Requested_Max_Speed))
@@ -269,7 +424,7 @@ def Generate_Torque_Speed(Test_Name,Export_Path,Export_Name,Export_Format,Loggin
     Script.append("# Maximum Torque (% of peak): " + str(st.session_state.Requested_Max_Torque))
     Script.append("# Skip Last Torque Demand per speed point?: " + str(st.session_state.Skip_Max_Torque))
     Script.append("")
-    Script.append("##### Time ######")
+    Script.append("###### Time ######")
     Script.append("# Torque Demand time (s): " + str(st.session_state.Requested_Torque_Up_Period))
     Script.append("# Wait Period (s): " + str(st.session_state.Requested_Wait_Period))
     Script.append("")

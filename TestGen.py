@@ -2,11 +2,13 @@ import os
 import numpy as np
 import streamlit as st
 from src.Profiles import Derwent_Profile, Bowfell_Profile, Oxford_Profile
-from src.Generator import Profile_Generator, Reference_Generation, Generate_Torque_Speed
+from src.Generator import genProfile, genEnvolope, genRef, genTorqueSpeed
 from src.Run import Intialise_and_Run_Test, Intialise_and_Run_Test_Offline, Run_Torque_Speed
 from src.Plot import Plot_Profile
 from datetime import datetime
-
+from io import StringIO
+import re
+import pandas as pd
 # OPEN CMD: streamlit run <filename>.py
 
 page_config = st.set_page_config(
@@ -19,6 +21,7 @@ page_config = st.set_page_config(
 # Begin
 st.title("📈 Test Generator")
 
+# Initialise
 datetime_format = ""
 Available_Projects = ["Derwent","Bowfell","Oxford","Other"]
 Field_InverterName = Available_Projects[1]
@@ -27,117 +30,194 @@ Field_InverterSampleLetter = Availble_SampleLetters[1]
 Availble_SampleNumber = ["1","2","3","4"]
 Field_InverterSampleNumber = Availble_SampleNumber[1]
 Test_Name = Field_InverterName
+fileCompatible = False
+profile = pd.DataFrame(data = {"torqueDemand":[],"torqueDemandPeriod":[],"speedDemand":[],"speedDemandRads":[],"speedLimFwd":[],"speedLimRev":[]})
+envolope = pd.DataFrame(data = {"torqueEnv":[],"speedEnv":[]})   
 
 st.write("The tool is used to generate and perform various tests such as; torque steps at various speeds, injecting currents to a eMotor etc.")
-if st.checkbox("Use Custom Test Profile", value = False):
-    st.file_uploader("Custom Test Profile Upload",type='.py', accept_multiple_files=False)
-else:
-    with st.expander("Test Setup", expanded=True):
-        # Project
-        st.text_input("Test Name", value = "", placeholder="AUTO: <DATETIME>_<PROJECT>_<INVERTER>_<MOTOR>_<VOLTAGE>_<PROFILE>",key = "Test_Name")
-        st.text_input("Log Directory", value = os.getcwd()+"\Log", placeholder=os.getcwd(), key = "Logging_Path")
-        if st.session_state.Logging_Path =="":
-            Logging_Path = os.getcwd()
-        else:
-            Logging_Path = st.session_state.Logging_Path
+if st.checkbox("Use Custom Test Profile", value = False, key = "customFile"):
+    profileGenMode = False
+    
+    uploaded_file  = st.file_uploader("Custom Test Profile Upload",type=['.txt','.py'], accept_multiple_files=False)
 
-        # Inverter
-        st.subheader("Inverter")
-        TestCol_Inverter,TestCol_InverterSampleLetter,TestCol_InverterSampleNumber = st.columns(3)
+    if uploaded_file is not None:
+        # To read file as bytes:
+        bytes_data = uploaded_file.getvalue()
+        #st.write(bytes_data)
+#
+        ## To convert to a string based IO:
+        stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
+        #st.write(stringio)
+#
+        ## To read file as string:
+        string_data = stringio.read()
+        
+        try:
+            regexSpeedDemands = re.search(r'(Speed_Demands = )(.*)', string_data, flags=0)
+            profile.speedDemand = re.findall(r'(\d+.\d)', regexSpeedDemands.group(2), flags=0)
+        except:
+            st.error("Could not find Speed_Demands in file")
+            st.stop()
 
-        TestCol_Inverter.selectbox("Project",Available_Projects, key = "Requested_Project")
+        try:
+            regexTorqueDemands = re.search(r'(Torque_Demands = )(.*)', string_data, flags=0)
+            profile.torqueDemand = re.findall(r'(\d+.\d)', regexTorqueDemands.group(2), flags=0)
+        except:
+            st.error("Could not find Torque_Demands in file")
+            st.stop()
 
-        if st.session_state.Requested_Project == "Other":
-            TestCol_Inverter.text_input("", value = "", key = "Requested_Project_Other")
-            Field_InverterName = st.session_state.Requested_Project_Other
-        else:
-            Field_InverterName =  st.session_state.Requested_Project
+        try:
+            regexTorqueDemandWait = re.search(r'(Torque_Demand_Time = )(.*)', string_data, flags=0)
+            profile.torqueDemandPeriod = re.findall(r'(\d+.\d)', regexTorqueDemandWait.group(2), flags=0)
+        except:
+            st.error("Could not find Torque_Demand_Time in file")
+            st.stop()
 
-        if st.session_state.Requested_Project == "Bowfell":
-            Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, Max_Voltage, Max_Speed,Max_Torque = Bowfell_Profile()
+        try:
+            regexSpeedLimFwd = re.search(r'(Speed_Limits_Forward = )(.*)', string_data, flags=0)
+            profile.speedLimFwd = re.findall(r'(\d+.\d)', regexSpeedLimFwd.group(2), flags=0)
+        except:
+            st.error("Could not find Speed_Limits_Forward in file")
+            st.stop()
 
-        if st.session_state.Requested_Project == "Oxford":
-            Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, Max_Voltage, Max_Speed,Max_Torque = Oxford_Profile()
+        try:
+            regexSpeedLimRev = re.search(r'(Speed_Limits_Reverse = )(.*)', string_data, flags=0)
+            profile.speedLimRev = re.findall(r'(\d+.\d)', regexSpeedLimRev.group(2), flags=0)
+        except:
+            st.error("Could not find Speed_Limits_Reverse in file")
+            st.stop()
+#       
+        try:
+            regexDCDCILimPos = re.search(r'(DCDC_I_Limit_Pos = )(.*)', string_data, flags=0)
+            readregexDCDCILimPos = re.findall(r'(\d+.\d)', regexDCDCILimPos.group(2), flags=0)
+        except:
+            st.error("Could not find DCDC_I_Limit_Pos in file")
+            st.stop()
 
-        if st.session_state.Requested_Project == "Derwent":
-            Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, Max_Voltage, Max_Speed,Max_Torque = Derwent_Profile()
+        try:
+            regexDCDCILimNeg = re.search(r'(DCDC_I_Limit_Neg = )(.*)', string_data, flags=0)
+            readregexDCDCILimNeg = re.findall(r'(\d+.\d)', regexDCDCILimNeg.group(2), flags=0)
+        except:
+            st.error("Could not find DCDC_I_Limit_Neg in file")
+            st.stop()
 
-        TestCol_InverterSampleLetter.selectbox("Sample Letter",Availble_SampleLetters, key = "Inverter_SampleLetter")
+        try:
+            regexDCDCVTarget = re.search(r'(DCDC_V_Target = )(.*)', string_data, flags=0)
+            voltageRef = float(regexDCDCVTarget.group(2))
+        except:
+            st.error("Could not find DCDC_I_Limit_Neg in file")
+            st.stop()
+        
+        fileCompatible = True
 
-        if st.session_state.Inverter_SampleLetter == "Other":
-            TestCol_InverterSampleLetter.text_input("", value = "", key = "Inverter_SampleLetter_Other")
-            Field_InverterSampleLetter = st.session_state.Inverter_SampleLetter_Other
-            Inverter_SampleNumber = "_"
-        else:
-            Field_InverterSampleLetter = st.session_state.Inverter_SampleLetter
-            Inverter_SampleNumber = Availble_SampleNumber
+with st.expander("Test Setup", expanded=True):
+    # Project
+    st.text_input("Test Name", value = "", placeholder="AUTO: <DATETIME>_<PROJECT>_<INVERTER>_<MOTOR>_<VOLTAGE>_<PROFILE>",key = "Test_Name")
+    st.text_input("Log Directory", value = os.getcwd()+"\Log", placeholder=os.getcwd(), key = "Logging_Path")
+    if st.session_state.Logging_Path =="":
+        Logging_Path = os.getcwd()
+    else:
+        Logging_Path = st.session_state.Logging_Path
 
-        TestCol_InverterSampleNumber.selectbox("Sample Number",Inverter_SampleNumber, key = "Inverter_SampleNumber")
-        if st.session_state.Inverter_SampleNumber != "_":
-            Field_InverterSampleNumber = st.session_state.Inverter_SampleNumber
-        else:
-            Field_InverterSampleNumber = "_"
-        st.text_area("Inverter Notes", placeholder = "Hardware modifications, Prototype, Customer return etc.", key = "Inverter_Note")
+    # Inverter
+    st.subheader("Inverter")
+    TestCol_Inverter,TestCol_InverterSampleLetter,TestCol_InverterSampleNumber = st.columns(3)
 
-        # Motor
-        st.subheader("Motor")
-        # IDEA May add serial number ID, attach offset and ke.
-        TestCol_Motor, TestCol_MotorSampleLetter, TestCol_MotorSampleNumber = st.columns(3)
+    TestCol_Inverter.selectbox("Project",Available_Projects, key = "Requested_Project")
 
-        TestCol_Motor.selectbox("Project",["Turntide","Remy","Yasa","Integral Powertrain","Emrax","Other"], key = "Motor_Manufacturer")
+    if st.session_state.Requested_Project == "Other":
+        TestCol_Inverter.text_input("", value = "", key = "Requested_Project_Other")
+        Field_InverterName = st.session_state.Requested_Project_Other
+    else:
+        Field_InverterName =  st.session_state.Requested_Project
 
-        if st.session_state.Motor_Manufacturer == "Other":
-            TestCol_Motor.text_input("", value = "", key = "Motor_Manufacturer_Other")
+    if st.session_state.Requested_Project == "Bowfell":
+        Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, Max_Voltage, Max_Speed,Max_Torque = Bowfell_Profile()
 
-        TestCol_MotorSampleLetter.selectbox("Sample Letter",["A","B","C","D","Other"], key = "Motor_SampleLetter")
-        if st.session_state.Motor_Manufacturer == "Other":
-            TestCol_MotorSampleLetter.text_input("", value = "", key = "Motor_Sample_Other")
+    if st.session_state.Requested_Project == "Oxford":
+        Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, Max_Voltage, Max_Speed,Max_Torque = Oxford_Profile()
 
-        TestCol_MotorSampleNumber.selectbox("Sample Number",["1","2","3","4","N/A"], key = "Motor_SampleNumber")
-        st.text_area("Motor Notes", placeholder = "Hardware modifications, Prototype, Customer return etc.", key = "Motor_Note")
+    if st.session_state.Requested_Project == "Derwent":
+        Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, Max_Voltage, Max_Speed,Max_Torque = Derwent_Profile()
 
-        # Software
-        st.subheader("Software")
-        SoftCol_Commit, SoftCol_Ke, SoftCol_Offset,  = st.columns(3)
-        SoftCol_Commit.text_input("Commit", value = "", key = "Soft_Commit")
-        SoftCol_Ke.text_input("Ke", value = "", key = "Soft_Ke")
-        SoftCol_Offset.text_input("Offset", value = "", key = "Soft_Offset")
+    TestCol_InverterSampleLetter.selectbox("Sample Letter",Availble_SampleLetters, key = "Inverter_SampleLetter")
 
-        # Dyno
-        st.subheader("Dynamometer")
-        Dyno_Location, DynoCol_Ip, DynoCol_Port, DynoCol_Id = st.columns(4)
+    if st.session_state.Inverter_SampleLetter == "Other":
+        TestCol_InverterSampleLetter.text_input("", value = "", key = "Inverter_SampleLetter_Other")
+        Field_InverterSampleLetter = st.session_state.Inverter_SampleLetter_Other
+        Inverter_SampleNumber = "_"
+    else:
+        Field_InverterSampleLetter = st.session_state.Inverter_SampleLetter
+        Inverter_SampleNumber = Availble_SampleNumber
 
-        Dyno_Location.selectbox("Location",["DX: 340kW","DX: 160kW","DX: 100kW"], key = "Dyno_Location")
+    TestCol_InverterSampleNumber.selectbox("Sample Number",Inverter_SampleNumber, key = "Inverter_SampleNumber")
+    if st.session_state.Inverter_SampleNumber != "_":
+        Field_InverterSampleNumber = st.session_state.Inverter_SampleNumber
+    else:
+        Field_InverterSampleNumber = "_"
+    st.text_area("Inverter Notes", placeholder = "Hardware modifications, Prototype, Customer return etc.", key = "Inverter_Note")
 
-        if st.session_state.Dyno_Location == "DX: 340kW":
-            Default_Ip =  "192.168.1.2"
-            Default_Port = int(502)
-            Default_Id = int(0)
-            Default_Ixxat_MCU = "HW507598"
-            Default_Ixxat_DCDC = "HW484965"
-        if st.session_state.Dyno_Location == "DX: 160kW":
-            Default_Ip =  "192.168.1.1"
-            Default_Port = int(502)
-            Default_Id = int(0)
-            Default_Ixxat_MCU = "HW123456"
-            Default_Ixxat_DCDC = "HW79010"
-        if st.session_state.Dyno_Location == "DX: 100kW":
-            Default_Ip =  "192.168.1.1"
-            Default_Port = int(502)
-            Default_Id = int(0)
-            Default_Ixxat_MCU = "HW100"
-            Default_Ixxat_DCDC = "HW200"
+    # Motor
+    st.subheader("Motor")
 
-        DynoCol_Ip.text_input("IP Address",value = Default_Ip, key = "Dyno_Ip")
-        DynoCol_Port.number_input("Port", min_value = 0, max_value = 5000, value = Default_Port, step = 1, key = "Dyno_Port")
-        DynoCol_Id.number_input("ID", min_value = 0, max_value = 64, value = Default_Id, step = 1, key = "Dyno_Id")
+    # IDEA May add serial number ID, attach offset and ke.
+    TestCol_Motor, TestCol_MotorSampleLetter, TestCol_MotorSampleNumber = st.columns(3)
 
-        # CAN
-        st.subheader("CAN Hardware")
-        IxxatCol_DCDC, IxxatCol_MCU = st.columns(2)
-        IxxatCol_DCDC.text_input("DCDC Ixxat HWID", value = Default_Ixxat_MCU, key = "CAN_ID_DCDC")
-        IxxatCol_MCU.text_input("MCU Ixxat HWID", value = Default_Ixxat_DCDC, key = "CAN_ID_MCU")
+    TestCol_Motor.selectbox("Project",["Turntide","Remy","Yasa","Integral Powertrain","Emrax","Other"], key = "Motor_Manufacturer")
 
+    if st.session_state.Motor_Manufacturer == "Other":
+        TestCol_Motor.text_input("", value = "", key = "Motor_Manufacturer_Other")
+
+    TestCol_MotorSampleLetter.selectbox("Sample Letter",["A","B","C","D","Other"], key = "Motor_SampleLetter")
+    if st.session_state.Motor_Manufacturer == "Other":
+        TestCol_MotorSampleLetter.text_input("", value = "", key = "Motor_Sample_Other")
+
+    TestCol_MotorSampleNumber.selectbox("Sample Number",["1","2","3","4","N/A"], key = "Motor_SampleNumber")
+    st.text_area("Motor Notes", placeholder = "Hardware modifications, Prototype, Customer return etc.", key = "Motor_Note")
+
+    # Software
+    st.subheader("Software")
+    SoftCol_Commit, SoftCol_Ke, SoftCol_Offset,  = st.columns(3)
+    SoftCol_Commit.text_input("Commit", value = "", key = "Soft_Commit")
+    SoftCol_Ke.text_input("Ke", value = "", key = "Soft_Ke")
+    SoftCol_Offset.text_input("Offset", value = "", key = "Soft_Offset")
+
+    # Dyno
+    st.subheader("Dynamometer")
+    Dyno_Location, DynoCol_Ip, DynoCol_Port, DynoCol_Id = st.columns(4)
+
+    Dyno_Location.selectbox("Location",["DX: 340kW","DX: 160kW","DX: 100kW"], key = "Dyno_Location")
+
+    if st.session_state.Dyno_Location == "DX: 340kW":
+        Default_Ip =  "192.168.1.2"
+        Default_Port = int(502)
+        Default_Id = int(0)
+        Default_Ixxat_MCU = "HW507598"
+        Default_Ixxat_DCDC = "HW484965"
+    if st.session_state.Dyno_Location == "DX: 160kW":
+        Default_Ip =  "192.168.1.1"
+        Default_Port = int(502)
+        Default_Id = int(0)
+        Default_Ixxat_MCU = "HW123456"
+        Default_Ixxat_DCDC = "HW79010"
+    if st.session_state.Dyno_Location == "DX: 100kW":
+        Default_Ip =  "192.168.1.1"
+        Default_Port = int(502)
+        Default_Id = int(0)
+        Default_Ixxat_MCU = "HW100"
+        Default_Ixxat_DCDC = "HW200"
+
+    DynoCol_Ip.text_input("IP Address",value = Default_Ip, key = "Dyno_Ip")
+    DynoCol_Port.number_input("Port", min_value = 0, max_value = 5000, value = Default_Port, step = 1, key = "Dyno_Port")
+    DynoCol_Id.number_input("ID", min_value = 0, max_value = 64, value = Default_Id, step = 1, key = "Dyno_Id")
+
+    # CAN
+    st.subheader("CAN Hardware")
+    IxxatCol_DCDC, IxxatCol_MCU = st.columns(2)
+    IxxatCol_DCDC.text_input("DCDC Ixxat HWID", value = Default_Ixxat_MCU, key = "CAN_ID_DCDC")
+    IxxatCol_MCU.text_input("MCU Ixxat HWID", value = Default_Ixxat_DCDC, key = "CAN_ID_MCU")
+
+if st.session_state.customFile == False:
     with st.expander("Test Generator", expanded=False):
         st.subheader("Test Type")
         TestCol_1, TestCol_2 = st.columns(2)
@@ -155,7 +235,7 @@ else:
             DCDCCol_3.number_input("DC Link Current (-)",  min_value = -500.0, max_value = 0.0, value = -400.0, step = 0.5 ,key = "Requested_I_Lim_Neg")
 
             # Speed
-            st.write("Speed")
+            st.subheader("Speed")
             SpeedCol_1,SpeedCol_2,SpeedCol_3 = st.columns(3)
             SpeedCol_1.number_input("Minimum Speed (abs(rpm))", min_value = 0.0, max_value = float(Max_Speed), value = 500.0, step = 0.5, key = "Requested_Min_Speed")
             SpeedCol_2.number_input("Speed Step Size (abs(rpm))", min_value = 0.5, max_value = float(Max_Speed), value = 500.0, step = 0.5, key = "Requested_Speed_Step")
@@ -196,8 +276,9 @@ else:
             st.number_input("Wait Period (s)", min_value = 0.0, max_value = 5000.0, value = 1.0, step = 0.01, key = "Requested_Wait_Period", disabled = True)
 
             # Export
-            Profile_Speeds, Profile_Torques, Speed_Lim_Fwd, Speed_Lim_Rev, Project_Speeds, Project_Torques, Torque_Time, Profile_Voltage  = Profile_Generator(st.session_state.Requested_Profile, Max_Voltage, st.session_state.Requested_Voltage, st.session_state.Requested_Torque_Up_Step, Max_Speed, st.session_state.Requested_Speed_Step, st.session_state.Requested_Min_Speed, st.session_state.Requested_Max_Speed, st.session_state.Requested_Min_Torque, st.session_state.Requested_Max_Torque, st.session_state.Requested_Torque_Up_Period, st.session_state.Requested_Torque_Down_Period, st.session_state.Requested_Wait_Period, Voltage_BreakPoints, Speed_BreakPoints, Peak_Torque, st.session_state.Requested_Speed_Limit_Type, st.session_state.Requested_Speed_Limit, st.session_state.Skip_Max_Torque)
-
+            voltageRef = min(abs(Max_Voltage),abs(st.session_state.Requested_Voltage))
+            profile = genProfile(st.session_state.Requested_Profile, Peak_Torque, st.session_state.Requested_Max_Torque, st.session_state.Requested_Min_Torque, st.session_state.Requested_Torque_Up_Step, st.session_state.Requested_Torque_Down_Step, st.session_state.Requested_Torque_Up_Period, st.session_state.Requested_Torque_Down_Period, st.session_state.Skip_Max_Torque ,Max_Speed, st.session_state.Requested_Max_Speed,st.session_state.Requested_Min_Speed, st.session_state.Requested_Speed_Step, st.session_state.Requested_Speed_Step, st.session_state.Requested_Speed_Limit_Type, st.session_state.Requested_Speed_Limit, Speed_BreakPoints, Voltage_BreakPoints, voltageRef)
+        
         elif st.session_state.Requested_Type == "Idq Injection":
             st.info("Under Devleopement")
             st.stop()
@@ -214,26 +295,30 @@ else:
         Internal_Name = "TestScript"
         Internal_Format = ".py"
 
-        Generate_Torque_Speed(Test_Name,os.getcwd() + "\\",Internal_Name,Internal_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, Profile_Voltage, Profile_Speeds,Speed_Lim_Fwd, Speed_Lim_Rev, Profile_Torques, Torque_Time)
-        
-        #Plot
-        with st.spinner("Gererating Profile & Plots"):
-            Plot_Points, Plot_Timeline  = Plot_Profile(st.session_state.Requested_Project, Profile_Torques, Profile_Speeds, Profile_Voltage, Project_Speeds, Project_Torques, Speed_Lim_Fwd, Speed_Lim_Rev)
-            st.subheader("Profile Test Points")
-            st.plotly_chart(Plot_Points)
-            st.subheader("Profile Timeline")
-            st.plotly_chart(Plot_Timeline)  
-        
-        st.subheader("Export Test")
-        st.write("Export test to a file to be shared or stored.")
+        genTorqueSpeed(Test_Name,os.getcwd() + "\\",Internal_Name,Internal_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, voltageRef, profile.speedDemand.tolist() ,profile.speedLimFwd.tolist(), profile.speedLimRev.tolist(), profile.torqueDemand.tolist(), profile.torqueDemandPeriod.tolist())
 
         Export_Col1, Export_Col2 = st.columns(2)
         Export_Col1.text_input("Export Directory", value = os.getcwd() + "\\Export\\" , placeholder= os.getcwd() + "\\Export\\",key = "Export_Path")
         Export_Col2.selectbox("File Format",[".py",".txt",".csv"], key = "Export_Format")
         st.warning("Under developement: (.csv)")
+        st.subheader("Export Test")
+        st.write("Export test to a file to be shared or stored.")
         if st.button("Export"):
-            Generate_Torque_Speed(Test_Name,st.session_state.Export_Path,Test_Name,st.session_state.Export_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, Profile_Voltage, Profile_Speeds,Speed_Lim_Fwd, Speed_Lim_Rev, Profile_Torques, Torque_Time)
+            genTorqueSpeed(Test_Name,st.session_state.Export_Path,Test_Name,st.session_state.Export_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, voltageRef, profile.speedDemand.tolist(),profile.speedLimRev.tolist(), profile.speedLimRev.tolist(), profile.torqueDemand.tolist(), profile.torqueDemandPeriod.tolist())
+        profileGenMode = True
 
+if (fileCompatible == True) or (profileGenMode == True):
+    #Plot
+    profile.speedDemandRads = profile.speedDemand * 2
+    #profile.powerMech = abs(profile.speedDemandRads.multiply(profile.torqueDemand))
+    #st.write(profile)
+    envolope = genEnvolope(Peak_Torque, Speed_BreakPoints, Voltage_BreakPoints, voltageRef)
+    with st.spinner("Gererating Profile & Plots"):
+        Plot_Points, Plot_Timeline  = Plot_Profile(profile, voltageRef, envolope.speedEnv, envolope.torqueEnv, profile.speedLimFwd, profile.speedLimRev)
+        st.subheader("Profile Test Points")
+        st.plotly_chart(Plot_Points)
+        st.subheader("Profile Timeline")
+        st.plotly_chart(Plot_Timeline)  
 
 with st.expander("Symbols", expanded = False):
     st.error("Logging via CANDI not yet available.")
@@ -241,7 +326,7 @@ with st.expander("Symbols", expanded = False):
     s1, s2 = st.columns(2)
     
     if st.session_state.Symbol_Set == "Default":
-        if st.session_state.Requested_Type == "Torque Speed Sweep":
+        if (fileCompatible == "True") or (st.session_state.Requested_Type == "Torque Speed Sweep"):
             if st.session_state.Requested_Project == "Derwent":
                 VDC = "VDC PlaceHolder"
                 IDC = "IDC PlaceHolder"
@@ -328,7 +413,7 @@ if C2.button("Confirm and Start Tests"):
     st.write("Filename and/or Directory Name Saved to : " + Test_Name)
 
     if st.session_state.Target_Local == "Local":
-        Intialise_and_Run_Test_Offline(st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, Profile_Voltage, Profile_Speeds,Speed_Lim_Fwd, Speed_Lim_Rev, Profile_Torques, st.session_state.Requested_Torque_Up_Period)
+        Intialise_and_Run_Test_Offline(st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, voltageRef, profile.speedDemand ,profile.speedLimFwd, profile.speedLimRev, profile.torqueDemand, st.session_state.Requested_Torque_Up_Period)
     else:
         Intialise_and_Run_Test()
     

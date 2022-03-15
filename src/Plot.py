@@ -1,12 +1,15 @@
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import pandas as pd
+import streamlit as st
 
 
-def Plot_Profile(Profile_Project, Profile_Torques ,Profile_Speeds, Profile_Voltage, Project_Speeds, Project_Torques, Speed_Limit_Forward, Speed_Limit_Reverse):
+def Plot_Profile(profile, Profile_Voltage, Project_Speeds, Project_Torques, Speed_Limit_Forward, Speed_Limit_Reverse):  
+
+        profile.speedDemandRads = profile.speedDemand.multiply(2*3.14*(1/60))
+        profile.powerMech = abs(profile.speedDemandRads.multiply(profile.torqueDemand))
         
-        Profile_Speed_rads = np.multiply(Profile_Speeds,(2*3.14*(1/60)))
-        Profile_Powers = np.multiply(Profile_Speed_rads, Profile_Torques)
         # IDEA 1y left, 2y right
         test_plot_scatter = go.Figure()
 
@@ -19,26 +22,24 @@ def Plot_Profile(Profile_Project, Profile_Torques ,Profile_Speeds, Profile_Volta
                         )
 
         test_plot_scatter.add_trace	(go.Scattergl (  
-                                    x       		= Profile_Speeds,
-                                    y       		= Profile_Torques,
+                                    x       		= profile.speedDemand,
+                                    y       		= profile.torqueDemand,
                                     name 			= "Test Points",
                                     mode            = 'markers',
                                             )
                             )
 
         test_plot_scatter.update_layout(   
-                                    title       = "Test Points: "+ str(Profile_Project) + ": " + str(Profile_Voltage) + "V, " + str(min(Profile_Speeds)) + "rpm to " + str(max(Profile_Speeds)) + " rpm, ",
+                                    title       = "Test Points: "  + str(Profile_Voltage) + "V, " + str(min(profile.speedDemand)) + "rpm to " + str(max(profile.speedDemand)) + " rpm, ",
                                     xaxis_title = "Speed [rpm]",
                                     yaxis_title = "Torque Demanded [Nm]"
                                     )
       
-
-        
         # TIMELINe
         test_plot_time = go.Figure()
 
         test_plot_time.add_trace(go.Scattergl (  
-                                    y       		= Profile_Speeds,
+                                    y       		= profile.speedDemand,
                                     name 		= "Speed (rpm)",
                                     yaxis='y1'
                                     
@@ -61,7 +62,7 @@ def Plot_Profile(Profile_Project, Profile_Torques ,Profile_Speeds, Profile_Volta
 
 
         test_plot_time.add_trace(go.Scattergl (  
-                                y       		= Profile_Torques,
+                                y       		= profile.torqueDemand,
                                 name 			= "Torque (Nm)",
                                 yaxis='y3'
 
@@ -69,7 +70,7 @@ def Plot_Profile(Profile_Project, Profile_Torques ,Profile_Speeds, Profile_Volta
                         )    
 
         test_plot_time.add_trace(go.Scattergl (  
-                            y       		= abs(Profile_Powers),
+                            y       		= profile.powerMech,
                             name 			= "Mech Power (W)",
                             yaxis='y4'
 
@@ -99,7 +100,7 @@ def Plot_Profile(Profile_Project, Profile_Torques ,Profile_Speeds, Profile_Volta
                 side="right",
                 position=0.9
             ),
-                title       = "Test Input Timeline: " + str(Profile_Project) + ": " + str(Profile_Voltage) + "V, " + str(min(Profile_Speeds)) + "rpm to " + str(max(Profile_Speeds)) + " rpm, " ,
+                title       = "Test Input Timeline: "  + str(Profile_Voltage) + "V, " + str(min(profile.speedDemand)) + "rpm to " + str(max(profile.speedDemand)) + " rpm, " ,
                 xaxis_title = "Test Point",
                 hovermode="x unified",
                 legend=dict(
