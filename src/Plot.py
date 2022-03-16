@@ -6,9 +6,6 @@ import streamlit as st
 
 
 def Plot_Profile(profile, Profile_Voltage, Project_Speeds, Project_Torques, Speed_Limit_Forward, Speed_Limit_Reverse):  
-
-        profile.speedDemandRads = profile.speedDemand.multiply(2*3.14*(1/60))
-        profile.powerMech = abs(profile.speedDemandRads.multiply(profile.torqueDemand))
         
         # IDEA 1y left, 2y right
         test_plot_scatter = go.Figure()

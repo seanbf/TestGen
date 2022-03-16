@@ -251,8 +251,7 @@ def genProfile(profile, torquePeak, torqueMaxPcIn, torqueMinVal, torqueStepUp, t
 
     InitCount = 0
 
-    refInit = pd.DataFrame(data = {"torqueDemand":[],"torqueDemandPeriod":[],"speedDemand":[],"speedLimFwd":[],"speedLimRev":[]})
-    
+    refInit = pd.DataFrame(data = {"torqueDemand":[],"torqueDemandPeriod":[],"speedDemand":[],"speedDemandRads":[],"speedLimFwd":[],"speedLimRev":[],"powerMech":[]}) 
     xx, yy = np.meshgrid(voltageBreakpoints, speedBreakpoints)
 
     if profile          == "Forward Motoring":
@@ -473,3 +472,6 @@ def genTorqueSpeed(Test_Name,Export_Path,Export_Name,Export_Format,Logging_Path,
         f=open(File_Name, 'w')
         f.writelines("%s\n" % i for i in Script)
         f.close()
+    path = File_Name
+    
+    return path
