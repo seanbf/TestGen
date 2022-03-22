@@ -31,7 +31,7 @@ Availble_SampleNumber = ["1","2","3","4"]
 Field_InverterSampleNumber = Availble_SampleNumber[1]
 Test_Name = Field_InverterName
 fileCompatible = False
-profile = pd.DataFrame(data = {"torqueDemand":[],"torqueDemandPeriod":[],"speedDemand":[],"speedDemandRads":[],"speedLimFwd":[],"speedLimRev":[]})
+profile = pd.DataFrame(data = {"torqueDemand":[],"torqueDemandPeriod":[],"speedDemand":[],"speedDemandRads":[],"speedLimFwd":[],"speedLimRev":[],"powerMech":[]})
 envolope = pd.DataFrame(data = {"torqueEnv":[],"speedEnv":[]})   
 
 st.write("The tool is used to generate and perform various tests such as; torque steps at various speeds, injecting currents to a eMotor etc.")
@@ -51,10 +51,12 @@ if st.checkbox("Use Custom Test Profile", value = False, key = "customFile"):
 #
         ## To read file as string:
         string_data = stringio.read()
+        codeToExecute = string_data
         
         try:
             regexSpeedDemands = re.search(r'(Speed_Demands = )(.*)', string_data, flags=0)
             profile.speedDemand = re.findall(r'(\d+.\d)', regexSpeedDemands.group(2), flags=0)
+            profile.speedDemand = profile.speedDemand.astype(float)
         except:
             st.error("Could not find Speed_Demands in file")
             st.stop()
@@ -62,6 +64,7 @@ if st.checkbox("Use Custom Test Profile", value = False, key = "customFile"):
         try:
             regexTorqueDemands = re.search(r'(Torque_Demands = )(.*)', string_data, flags=0)
             profile.torqueDemand = re.findall(r'(\d+.\d)', regexTorqueDemands.group(2), flags=0)
+            profile.torqueDemand = profile.torqueDemand.astype(float)
         except:
             st.error("Could not find Torque_Demands in file")
             st.stop()
@@ -69,6 +72,7 @@ if st.checkbox("Use Custom Test Profile", value = False, key = "customFile"):
         try:
             regexTorqueDemandWait = re.search(r'(Torque_Demand_Time = )(.*)', string_data, flags=0)
             profile.torqueDemandPeriod = re.findall(r'(\d+.\d)', regexTorqueDemandWait.group(2), flags=0)
+            profile.torqueDemandPeriod = profile.torqueDemandPeriod.astype(float)
         except:
             st.error("Could not find Torque_Demand_Time in file")
             st.stop()
@@ -76,6 +80,7 @@ if st.checkbox("Use Custom Test Profile", value = False, key = "customFile"):
         try:
             regexSpeedLimFwd = re.search(r'(Speed_Limits_Forward = )(.*)', string_data, flags=0)
             profile.speedLimFwd = re.findall(r'(\d+.\d)', regexSpeedLimFwd.group(2), flags=0)
+            profile.speedLimFwd = profile.speedLimFwd.astype(float)
         except:
             st.error("Could not find Speed_Limits_Forward in file")
             st.stop()
@@ -83,6 +88,7 @@ if st.checkbox("Use Custom Test Profile", value = False, key = "customFile"):
         try:
             regexSpeedLimRev = re.search(r'(Speed_Limits_Reverse = )(.*)', string_data, flags=0)
             profile.speedLimRev = re.findall(r'(\d+.\d)', regexSpeedLimRev.group(2), flags=0)
+            profile.speedLimRev = profile.speedLimRev.astype(float)
         except:
             st.error("Could not find Speed_Limits_Reverse in file")
             st.stop()
@@ -294,8 +300,11 @@ if st.session_state.customFile == False:
 
         Internal_Name = "TestScript"
         Internal_Format = ".py"
-
-        genTorqueSpeed(Test_Name,os.getcwd() + "\\",Internal_Name,Internal_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, voltageRef, profile.speedDemand.tolist() ,profile.speedLimFwd.tolist(), profile.speedLimRev.tolist(), profile.torqueDemand.tolist(), profile.torqueDemandPeriod.tolist())
+        
+        codePath = genTorqueSpeed(Test_Name,os.getcwd() + "\\",Internal_Name,Internal_Format,st.session_state.Logging_Path, st.session_state.CAN_ID_DCDC, st.session_state.CAN_ID_MCU, st.session_state.Dyno_Ip, st.session_state.Dyno_Port, st.session_state.Dyno_Id, voltageRef, profile.speedDemand.tolist() ,profile.speedLimFwd.tolist(), profile.speedLimRev.tolist(), profile.torqueDemand.tolist(), profile.torqueDemandPeriod.tolist())
+        
+        with open(codePath) as f:
+            codeToExecute = f.read().strip()
 
         Export_Col1, Export_Col2 = st.columns(2)
         Export_Col1.text_input("Export Directory", value = os.getcwd() + "\\Export\\" , placeholder= os.getcwd() + "\\Export\\",key = "Export_Path")
@@ -309,9 +318,9 @@ if st.session_state.customFile == False:
 
 if (fileCompatible == True) or (profileGenMode == True):
     #Plot
-    profile.speedDemandRads = profile.speedDemand * 2
-    #profile.powerMech = abs(profile.speedDemandRads.multiply(profile.torqueDemand))
-    #st.write(profile)
+    profile.speedDemandRads = profile.speedDemand.multiply(2*3.14*(1/60))
+    profile.powerMech = abs(profile.speedDemandRads.multiply(profile.torqueDemand))
+
     envolope = genEnvolope(Peak_Torque, Speed_BreakPoints, Voltage_BreakPoints, voltageRef)
     with st.spinner("Gererating Profile & Plots"):
         Plot_Points, Plot_Timeline  = Plot_Profile(profile, voltageRef, envolope.speedEnv, envolope.torqueEnv, profile.speedLimFwd, profile.speedLimRev)
@@ -326,60 +335,59 @@ with st.expander("Symbols", expanded = False):
     s1, s2 = st.columns(2)
     
     if st.session_state.Symbol_Set == "Default":
-        if (fileCompatible == "True") or (st.session_state.Requested_Type == "Torque Speed Sweep"):
-            if st.session_state.Requested_Project == "Derwent":
-                VDC = "VDC PlaceHolder"
-                IDC = "IDC PlaceHolder"
-                Id = "Id PlaceHolder"
-                Iq = "Iq PlaceHolder"
-                Ud = "Ud PlaceHolder"
-                Uq = "Uq PlaceHolder"
-                ModIndex =  "ModIndex PlaceHolder"
-                TorqueReference = "TorqueReference PlaceHolder"
-                TorqueTarget = "TorqueTarget PlaceHolder"
-                TorqueEstimated = "TorqueEstimated PlaceHolder"
-                TransducerTorque = "TransducerTorque PlaceHolder"
-                EncoderSpeed = "EncoderSpeed PlaceHolder"
-                TransducerSpeed = "TransducerSpeed PlaceHolder"
-                InverterHsTemp =  "InverterHsTemp PlaceHolder"
-                InverterIGBTTemp = "InverterIGBTTemp PlaceHolder"
-                StatorTemp = "StatorTemp PlaceHolder"  
+        if st.session_state.Requested_Project == "Derwent":
+            VDC = "VDC PlaceHolder"
+            IDC = "IDC PlaceHolder"
+            Id = "Id PlaceHolder"
+            Iq = "Iq PlaceHolder"
+            Ud = "Ud PlaceHolder"
+            Uq = "Uq PlaceHolder"
+            ModIndex =  "ModIndex PlaceHolder"
+            TorqueReference = "TorqueReference PlaceHolder"
+            TorqueTarget = "TorqueTarget PlaceHolder"
+            TorqueEstimated = "TorqueEstimated PlaceHolder"
+            TransducerTorque = "TransducerTorque PlaceHolder"
+            EncoderSpeed = "EncoderSpeed PlaceHolder"
+            TransducerSpeed = "TransducerSpeed PlaceHolder"
+            InverterHsTemp =  "InverterHsTemp PlaceHolder"
+            InverterIGBTTemp = "InverterIGBTTemp PlaceHolder"
+            StatorTemp = "StatorTemp PlaceHolder"  
 
-            elif st.session_state.Requested_Project == "Bowfell":
-                VDC = "VDC PlaceHolder"
-                IDC = "IDC PlaceHolder"
-                Id = "Id PlaceHolder"
-                Iq = "Iq PlaceHolder"
-                Ud = "Ud PlaceHolder"
-                Uq = "Uq PlaceHolder"
-                ModIndex =  "ModIndex PlaceHolder"
-                TorqueReference = "TorqueReference PlaceHolder"
-                TorqueTarget = "TorqueTarget PlaceHolder"
-                TorqueEstimated = "TorqueEstimated PlaceHolder"
-                TransducerTorque = "TransducerTorque PlaceHolder"
-                EncoderSpeed = "EncoderSpeed PlaceHolder"
-                TransducerSpeed = "TransducerSpeed PlaceHolder"
-                InverterHsTemp =  "InverterHsTemp PlaceHolder"
-                InverterIGBTTemp = "InverterIGBTTemp PlaceHolder"
-                StatorTemp = "StatorTemp PlaceHolder"  
+        elif st.session_state.Requested_Project == "Bowfell":
+            VDC = "VDC PlaceHolder"
+            IDC = "IDC PlaceHolder"
+            Id = "Id PlaceHolder"
+            Iq = "Iq PlaceHolder"
+            Ud = "Ud PlaceHolder"
+            Uq = "Uq PlaceHolder"
+            ModIndex =  "ModIndex PlaceHolder"
+            TorqueReference = "TorqueReference PlaceHolder"
+            TorqueTarget = "TorqueTarget PlaceHolder"
+            TorqueEstimated = "TorqueEstimated PlaceHolder"
+            TransducerTorque = "TransducerTorque PlaceHolder"
+            EncoderSpeed = "EncoderSpeed PlaceHolder"
+            TransducerSpeed = "TransducerSpeed PlaceHolder"
+            InverterHsTemp =  "InverterHsTemp PlaceHolder"
+            InverterIGBTTemp = "InverterIGBTTemp PlaceHolder"
+            StatorTemp = "StatorTemp PlaceHolder"  
 
-            elif st.session_state.Requested_Project == "Oxford":
-                VDC = "VDC PlaceHolder"
-                IDC = "IDC PlaceHolder"
-                Id = "Id PlaceHolder"
-                Iq = "Iq PlaceHolder"
-                Ud = "Ud PlaceHolder"
-                Uq = "Uq PlaceHolder"
-                ModIndex =  "ModIndex PlaceHolder"
-                TorqueReference = "TorqueReference PlaceHolder"
-                TorqueTarget = "TorqueTarget PlaceHolder"
-                TorqueEstimated = "TorqueEstimated PlaceHolder"
-                TransducerTorque = "TransducerTorque PlaceHolder"
-                EncoderSpeed = "EncoderSpeed PlaceHolder"
-                TransducerSpeed = "TransducerSpeed PlaceHolder"
-                InverterHsTemp =  "InverterHsTemp PlaceHolder"
-                InverterIGBTTemp = "InverterIGBTTemp PlaceHolder"
-                StatorTemp = "StatorTemp PlaceHolder"  
+        elif st.session_state.Requested_Project == "Oxford":
+            VDC = "VDC PlaceHolder"
+            IDC = "IDC PlaceHolder"
+            Id = "Id PlaceHolder"
+            Iq = "Iq PlaceHolder"
+            Ud = "Ud PlaceHolder"
+            Uq = "Uq PlaceHolder"
+            ModIndex =  "ModIndex PlaceHolder"
+            TorqueReference = "TorqueReference PlaceHolder"
+            TorqueTarget = "TorqueTarget PlaceHolder"
+            TorqueEstimated = "TorqueEstimated PlaceHolder"
+            TransducerTorque = "TransducerTorque PlaceHolder"
+            EncoderSpeed = "EncoderSpeed PlaceHolder"
+            TransducerSpeed = "TransducerSpeed PlaceHolder"
+            InverterHsTemp =  "InverterHsTemp PlaceHolder"
+            InverterIGBTTemp = "InverterIGBTTemp PlaceHolder"
+            StatorTemp = "StatorTemp PlaceHolder"  
 
         st.markdown("---")
 
@@ -399,6 +407,10 @@ with st.expander("Symbols", expanded = False):
         st.selectbox("Inverter Heatsink Temperature: ", [InverterHsTemp],  key="")
         st.selectbox("Inverter Switch Temperature: ", [InverterIGBTTemp],  key="")
         st.selectbox("Motor Stator Temperature: ", [StatorTemp],  key="")
+
+st.subheader("Code to Execute")
+with st.expander("Code", expanded=False):
+    st.code(codeToExecute, language="python")
 
 C1, C2, C3 = st.columns(3)
 
